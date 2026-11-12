@@ -1,0 +1,183 @@
+-- map with instruction information
+local instruction_info_map = {
+	["nop"]    = {["nibbles"] = 1},
+    ["j"]      = {["nibbles"] = 5},
+    ["l"]      = {["nibbles"] = 3},
+    ["w"]      = {["nibbles"] = 3},
+    ["cbz"]    = {["nibbles"] = 5},
+    ["cbnz"]   = {["nibbles"] = 5},
+    ["cbneg"]  = {["nibbles"] = 5},
+    ["cbnneg"] = {["nibbles"] = 5},
+    ["add"]    = {["nibbles"] = 4},
+    ["and"]    = {["nibbles"] = 4},
+    ["or"]     = {["nibbles"] = 4},
+    ["sub"]    = {["nibbles"] = 4},
+    ["s"]      = {["nibbles"] = 6},
+    ["not"]    = {["nibbles"] = 3},
+    ["rot"]    = {["nibbles"] = 4},
+}
+
+-- table/map that has all the hex values for converting to hex.
+-- lables will be added here
+local con_map  = {
+
+    -- instructions
+    ["nop"]    = "0",
+    ["j"]      = "1",
+    ["l"]      = "2",
+    ["w"]      = "3",
+    ["cbz"]    = "4",
+    ["cbnz"]   = "5",
+    ["cbneg"]  = "6",
+    ["cbnneg"] = "7",
+    ["add"]    = "8",
+    ["and"]    = "A",
+    ["or"]     = "B",
+    ["sub"]    = "C",
+    ["s"]      = "D",
+    ["not"]    = "E",
+    ["rot"]    = "F",
+
+    -- registers
+	["$0"]  = "0",
+    ["$r1"]  = "1",
+    ["$r2"]  = "2",
+    ["$r3"]  = "3",
+    ["$r4"]  = "4",
+    ["$r5"]  = "5",
+    ["$r6"]  = "6",
+    ["$r7"]  = "7",
+    ["$r8"]  = "8",
+    ["$r9"]  = "9",
+    ["$r10"] = "A",
+    ["$r11"] = "B",
+    ["$r12"] = "C",
+    ["$r13"] = "D",
+    ["$r14"] = "E",
+    ["$r15"] = "F",
+
+    -- labels appended in loop 1 of main assembler section
+}
+
+
+
+----------------------------
+-- FILE STUFF
+----------------------------
+
+-- display help text
+if (arg[1] == "-h" or arg[1] == "--help") then
+	print("lua assembler.lua input.s output.dat")
+	os.exit()
+end
+
+-- get file names
+input_file = arg[1]
+output_file = arg[2]
+  
+input = ""
+output = ""
+
+-- set input string to file text
+do
+	local file = io.open(input_file, "r")
+	input = file:read("*all")
+	file:close()
+end
+
+-- print raw input (remove later)
+print("Raw Input:\n")
+print(input.."\n\n\n")
+
+
+
+----------------------------
+-- PRE-PROCESS
+----------------------------
+
+output = input
+
+-- remove comments
+output = string.gsub(output, "#.-\n", "")
+
+-- remove empty lines
+output = string.gsub(output, "%s*\n", "\n")
+
+-- remove tabs
+output = string.gsub(output, "  ", "")
+
+-- translate pseudo instructions
+pseudo_instructions = {
+	-- regex go brrr
+	["beq ($r%d%d?) ($r%d%d?) (%a-\n)"] = "sub $0 %1 %2\ncbz %3"
+}
+for key,value in pairs(pseudo_instructions) do
+	output = string.gsub(output, key, value)
+end
+
+-- print preprocessed input (remove later)
+print("Preprocessed Input")
+print(output.."\n\n\n")
+
+
+
+----------------------------
+-- MAIN ASSEMBLER
+----------------------------
+-- translate identifiers (named labels, registers, memory addresses, etc.)
+-- convert to hex
+
+-- helper function to convert an integer to n digit hex
+local function intToHexString(value, digits)
+    local hex = string.format("%X", value)
+
+    -- pad with leading zeros if needed
+    while #hex < digits do
+        hex = "0" .. hex
+    end
+
+    -- optionally trim if too long
+    if #hex > digits then
+        hex = string.sub(hex, -digits)
+    end
+
+    return hex
+end
+
+-- loop 1:
+-- goes through each line with a mock program counter variable 
+-- increments if we find an instruction in instruction_info_map
+-- places each label inside of com_map with the current program counter value
+local programCounter = 0
+for line in output:gmatch("[^\n]+")  do
+
+	-- check for 'label:'
+	local labelMatch = line:match("([%w_%-%+%.]+):")
+    if labelMatch then
+		if not con_map[labelMatch] then
+			con_map[labelMatch] = intToHexString(programCounter, 4) -- adds the label and memory address of the label to the con map
+		else
+			print("ERROR: Same label defined twice.")
+		end
+		goto continue
+	end
+
+	-- check for instruction
+	local firstWord = line:match("^%s*(%a+)")
+	if firstWord and instruction_info_map[firstWord] then
+		programCounter = programCounter + instruction_info_map[firstWord].nibbles -- add nibble count to program counter 
+		goto continue
+	end
+
+	print("ERROR: No instruction or label found, this should be impossible.")
+
+	::continue::
+end
+
+-- print the com_map (remove later)
+for key, value in pairs(con_map) do
+	print(key .. " " .. value)
+end
+
+-- TODO: Second pass - replace all words in the current output to their mapped values in con_map
+-- output file
